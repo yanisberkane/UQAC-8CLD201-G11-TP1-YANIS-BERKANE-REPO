@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "sshPublicKeys_T_key_name": {
+      "value": null
+    },
+    "vaults_TP1_KEYVAULT_name": {
+      "value": null
+    },
+    "loadBalancers_TP1_LOAD_BALANCER_name": {
+      "value": null
+    },
+    "virtualMachineScaleSets_TP1_SCALESET_name": {
+      "value": null
+    },
+    "virtualMachines_TP1_SCALESET_ddac2be7_name": {
+      "value": null
+    },
+    "autoscalesettings_TP1_SCALESETautoscale_name": {
+      "value": null
+    },
+    "virtualNetworks_UQAC_8CLD201_G11_TP1_vnet_name": {
+      "value": null
+    },
+    "publicIPAddresses_TP1_LOAD_BALANCER_publicip_name": {
+      "value": null
+    },
+    "networkInterfaces_UQAC_8CLD201_G11_TP1_vnet_nic01_a316d225_name": {
+      "value": null
+    },
+    "networkSecurityGroups_basicNsgUQAC_8CLD201_G11_TP1_vnet_nic01_name": {
+      "value": null
+    },
+    "publicIPAddresses_publicIp_UQAC_8CLD201_G11_TP1_vnet_nic01_a316d225_name": {
+      "value": null
+    }
+  }
+}
