@@ -1,0 +1,48 @@
+#cloud-config
+
+package_upgrade: true
+
+packages:
+  - nginx
+  - nodejs
+  - npm
+
+write_files:
+  - owner: www-data:www-data
+    path: /etc/nginx/sites-available/default
+    defer: true
+    content: |
+      server {
+        listen 80;
+        location / {
+          proxy_pass http://localhost:3000;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection keep-alive;
+          proxy_set_header Host $host;
+          proxy_cache_bypass $http_upgrade;
+        }
+      }
+
+  - owner: www-data:www-data
+    path: /home/myapp/index.js
+    defer: true
+    content: |
+      const express = require('express');
+      const app = express();
+      const os = require('os');
+
+      app.get('/', (req, res) => {
+        res.send('Hello World from host ' + os.hostname() + '!');
+      });
+
+      app.listen(3000, () => {
+        console.log('Hello world app listening on port 3000!');
+      });
+
+runcmd:
+  - service nginx restart
+  - cd /home/myapp
+  - npm init -y
+  - npm install express
+  - nodejs index.js
