@@ -4,9 +4,7 @@
 trigger:
 - main
 
-pool:
-  name: macYanisPoolAgent 
-  vmImage: ubuntu-latest
+pool: 'default'
 
 variables:
   - name: location
