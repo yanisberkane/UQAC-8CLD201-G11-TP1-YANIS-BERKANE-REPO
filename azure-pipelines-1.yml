@@ -1,0 +1,68 @@
+# Deploy an Azure Resource Manager (ARM) template to Azure
+trigger:
+- main
+
+pool:
+  name: macYanisPoolAgent 
+  vmImage: ubuntu-latest
+
+variables:
+  - name: location
+    value: 'East US'
+  - name: serviceConnectionName
+    value: 'Azure subscription 1(ab74a266-7e69-4556-9fa4-07bda996372d)'
+  - name: azureSubscriptionId
+    value: 'ab74a266-7e69-4556-9fa4-07bda996372d'
+  - name: customDataContent
+
+steps:
+  - task: AzureResourceManagerTemplateDeployment@3
+    inputs:
+      deploymentScope: 'Resource Group'
+      azureResourceManagerConnection: $(serviceConnectionName)
+      subscriptionId: 'ab74a266-7e69-4556-9fa4-07bda996372d'
+      action: 'Create Or Update Resource Group'
+      resourceGroupName: 'myResourceGroup02'
+      location: $(location)
+      templateLocation: 'Linked artifact'
+      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.parameters.json'
+      deploymentMode: 'Incremental'
+      displayName: 'Deploy KeyVault ARM template'
+
+  - task: AzureKeyVault@1
+    inputs:
+      azureSubscription: $(serviceConnectionName)
+      KeyVaultName: 'myKeyVaultTP1'
+      SecretsFilter: '*'
+      SecretsAction: 'Create'
+      SecretName: 'KVadminPassword'
+      SecretValue: $(storedAdminPassword)
+      runAsPreJob: false
+      DisplayName: 'Create a secret in the keyvault'
+
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: |
+        $CloudContent = Get-Content -Path .\customData.txt -Raw
+        Write-Host $CloudContent
+        $encodedContent = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CloudContent))
+        Write-Host $encodedContent
+        Write-Host "##vso[task.setvariable variable=customDataContent;]$encodedContent"
+      displayName: 'Convert customData.txt to base64'
+
+  - task: AzureResourceManagerTemplateDeployment@3
+    inputs:
+      deploymentScope: 'Resource Group'
+      azureResourceManagerConnection: $(serviceConnectionName)
+      subscriptionId: $(azureSubscriptionId)
+      action: 'Create Or Update Resource Group'
+      resourceGroupName: 'myResourceGroup'
+      location: $(location)
+      templateLocation: 'Linked artifact'
+      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.parameters.json'
+      deploymentMode: 'Incremental'
+      overrideParameters: '-adminPassword $(storedAdminPassword) -customData $(customDataContent)'
+      displayName: 'Deploy VMSS ARM template'
