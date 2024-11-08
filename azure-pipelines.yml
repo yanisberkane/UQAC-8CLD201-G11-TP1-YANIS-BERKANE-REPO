@@ -1,10 +1,11 @@
-# Node.js with React
-# Build a Node.js project that uses React.
+# ARM template validation
 
 trigger:
 - main
 
-pool: 'default'
+pool:
+  name: 'default'
+  vmImage: 'ubuntu-latest'
 
 variables:
   - name: location
@@ -17,25 +18,27 @@ variables:
     value: ''
 
 steps:
+  # Web app compilation
+  # Install Node.js
   - task: NodeTool@0
     inputs:
       versionSpec: '20.x'
     displayName: 'Install Node.js'
 
+  # Install dependencies and build the React app
   - script: |
       cd webdoe
       npm install && npm run build
     displayName: 'Install dependencies and build the React app'
 
+  # Publish build artifact
   - task: PublishPipelineArtifact@1
     inputs:
-      targetPath: 'webdoe/build' # Répertoire de sortie du build (pour React)
+      targetPath: 'webdoe/build'
       artifact: 'drop'
     displayName: 'Publish build artifact'
 
-# Validate  ARM templates
-# Build and validate ARM templates
-
+  # Validate KeyVault ARM template
   - task: AzureResourceManagerTemplateDeployment@3
     inputs:
       deploymentScope: 'Resource Group'
@@ -45,11 +48,12 @@ steps:
       resourceGroupName: 'myResourceGroup02'
       location: $(location)
       templateLocation: 'Linked artifact'
-      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.json'
-      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.parameters.json'
+      csmFile: '$(Build.SourcesDirectory)/AzureResourceGroup2/azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)/AzureResourceGroup2/azuredeploy.parameters.json'
       deploymentMode: 'Validation'
       displayName: 'Validate KeyVault ARM template'
 
+  # Validate VMSS ARM template
   - task: AzureResourceManagerTemplateDeployment@3
     inputs:
       deploymentScope: 'Resource Group'
@@ -59,8 +63,8 @@ steps:
       resourceGroupName: 'myResourceGroup'
       location: $(location)
       templateLocation: 'Linked artifact'
-      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.json'
-      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.parameters.json'
+      csmFile: '$(Build.SourcesDirectory)/AzureResourceGroup1/azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)/AzureResourceGroup1/azuredeploy.parameters.json'
       overrideParameters: '-adminPassword $(storedAdminPassword) -customData'
       deploymentMode: 'Validation'
       displayName: 'Validate VMSS ARM template'

@@ -1,10 +1,11 @@
 # Deploy an Azure Resource Manager (ARM) template to Azure
+
 trigger:
 - main
 
 pool:
-  name: macYanisPoolAgent 
-  vmImage: ubuntu-latest
+  name: 'default'
+  vmImage: 'ubuntu-latest'
 
 variables:
   - name: location
@@ -16,6 +17,24 @@ variables:
   - name: customDataContent
 
 steps:
+  # Step 1: Install Node.js, build the React app, and publish the build artifact
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+    displayName: 'Install Node.js'
+
+  - script: |
+      cd webdoe
+      npm install && npm run build
+    displayName: 'Install dependencies and build the React app'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(System.DefaultWorkingDirectory)/webdoe/build'
+      artifact: react-build
+    displayName: 'Publish build artifact'
+
+  # Step 2: Deploy the KeyVault ARM template
   - task: AzureResourceManagerTemplateDeployment@3
     inputs:
       deploymentScope: 'Resource Group'
@@ -25,12 +44,13 @@ steps:
       resourceGroupName: 'myResourceGroup02'
       location: $(location)
       templateLocation: 'Linked artifact'
-      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.json'
-      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup2\azuredeploy.parameters.json'
+      csmFile: '$(Build.SourcesDirectory)/AzureResourceGroup2/azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)/AzureResourceGroup2/azuredeploy.parameters.json'
       deploymentMode: 'Incremental'
       displayName: 'Deploy KeyVault ARM template'
 
-  - task: AzureKeyVault@1
+  # Step 3: Create a secret in the keyvault and deploy the VMSS ARM template
+  - task: AzureKeyVault@2
     inputs:
       azureSubscription: $(serviceConnectionName)
       KeyVaultName: 'myKeyVaultTP1'
@@ -41,17 +61,17 @@ steps:
       runAsPreJob: false
       DisplayName: 'Create a secret in the keyvault'
 
-  - task: PowerShell@2
+  # Convert the content of customData.txt to base64 and set it as a pipeline variable
+  - task: Bash@3
     inputs:
       targetType: 'inline'
       script: |
-        $CloudContent = Get-Content -Path .\customData.txt -Raw
-        Write-Host $CloudContent
-        $encodedContent = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CloudContent))
-        Write-Host $encodedContent
-        Write-Host "##vso[task.setvariable variable=customDataContent;]$encodedContent"
-      displayName: 'Convert customData.txt to base64'
+        # Read the content of customData.txt, encode it in base64, and set it as a pipeline variable
+        encodedContent=$(base64 -w 0 customData.txt)
+        echo "##vso[task.setvariable variable=customDataContent]$encodedContent"
+    displayName: 'Convert customData.txt to base64'
 
+  # Deploy the VMSS ARM template
   - task: AzureResourceManagerTemplateDeployment@3
     inputs:
       deploymentScope: 'Resource Group'
@@ -61,8 +81,60 @@ steps:
       resourceGroupName: 'myResourceGroup'
       location: $(location)
       templateLocation: 'Linked artifact'
-      csmFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.json'
-      csmParametersFile: '$(Build.SourcesDirectory)\AzureResourceGroup1\azuredeploy.parameters.json'
+      csmFile: '$(Build.SourcesDirectory)/AzureResourceGroup1/azuredeploy.json'
+      csmParametersFile: '$(Build.SourcesDirectory)/AzureResourceGroup1/azuredeploy.parameters.json'
       deploymentMode: 'Incremental'
       overrideParameters: '-adminPassword $(storedAdminPassword) -customData $(customDataContent)'
       displayName: 'Deploy VMSS ARM template'
+
+  # Step 4: Download the React build artifact
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      buildType: 'current'
+      artifactName: 'react-build'
+      targetPath: '$(System.DefaultWorkingDirectory)/react-build'
+    displayName: 'Download React Build Artifact'
+
+  # Step 5: Copy build files to each VM in the scale set
+  # This step requires the sshpass utility to be installed on the build agent
+  # - Loop through the public IP addresses of the VM instances in the scale set
+  # - For each IP address, attempt to connect to the VM using SSH
+  # - If the connection is successful, create a directory on the VM and set permissions
+  # - Copy the build files to the directory on the VM
+  # - Retry the connection a specified number of times if it fails
+  # - Skip the IP address if it is not assigned to a VM
+  - task: AzureCLI@2
+    inputs: 
+      azureSubscription: $(serviceConnectionName)
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        vm_password=$(storedAdminPassword)
+        retries=2  # Set the number of retry attempts
+
+        for vm_ip in $(az network public-ip list --resource-group myResourceGroup --query "[].ipAddress" -o tsv); do
+          success=false
+
+          for attempt in $(seq 1 $retries); do
+            echo "Attempt $attempt to connect to $vm_ip"
+            
+            # Attempt to create directory and set permissions
+            sshpass -p "$vm_password" ssh -o StrictHostKeyChecking=no tpuser@$vm_ip "
+              sudo mkdir -p /var/www/myapp/build &&
+              sudo chown -R www-data:www-data /var/www/myapp/build &&
+              sudo chown -R tpuser:tpuser /var/www/myapp/build &&
+              sudo chmod -R 755 /var/www/myapp/build
+            " && success=true && break || echo "$vm_ip is not assigned to a VM"
+            
+            # Wait a moment before retrying
+            sleep 1
+          done
+
+          if [ "$success" = true ]; then
+            # Proceed with file copy if connection succeeded
+            sshpass -p "$vm_password" scp -o StrictHostKeyChecking=no -r $(System.DefaultWorkingDirectory)/react-build/* tpuser@$vm_ip:/var/www/myapp/build
+          else
+            echo "$vm_ip is not assigned to a VM"
+          fi
+        done
+    displayName: 'Transfer React App Files to VM Scale Set Instances'
